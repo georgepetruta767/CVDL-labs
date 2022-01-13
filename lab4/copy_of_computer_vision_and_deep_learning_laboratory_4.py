@@ -93,6 +93,7 @@ def resize_image(image, width = None, height = None, inter = cv2.INTER_AREA):
     return resized
 
 
+#this function is used to resize the image to 32x32 and to create a border of type replicate
 def process_image(path):
     image = cv2.imread(path)
     if image is None:
@@ -199,7 +200,6 @@ from tensorflow.keras.initializers import he_normal
 from tensorflow.keras.activations import softmax
 from tensorflow.keras import Model
 
-
 def res_block(inputs, filters):
     x = Conv2D(filters, 3, padding='same', activation='relu', kernel_initializer = he_normal())(inputs)
     x = Conv2D(filters, 3, padding='same', activation='relu', kernel_initializer = he_normal())(x)
@@ -267,19 +267,14 @@ outputs = Dense(37, activation=softmax)(x)
 model = Model(inputs=inputs, outputs=outputs)
 model.summary()
 opt = tf.keras.optimizers.Adam(learning_rate=0.005)
+
 model.compile(
     loss= tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
     optimizer=opt,
     metrics=['accuracy']
 )
-history = model.fit_generator(generator=DataGenerator(db_dir = "./images", input_shape = (32, 32, 3), num_classes = 37, batch_size=128, shuffle=True)
 
-plt.plot(history.history['accuracy'], label='accuracy')
-plt.ylabel('Accuracy')
-plt.legend(loc='lower right')
-accuracy = np.array(history.history['accuracy'])
-np.save('saved_accuracy1', accuracy)
-model.save('saved_model1')
+history = model.fit_generator(generator=DataGenerator(db_dir = "./images", input_shape = (32, 32, 3), num_classes = 37, batch_size=128, shuffle=True), epochs=10, verbose=1)
 
 """### **Extra credit**
 
@@ -300,24 +295,6 @@ Evaluate the ensemble (your accuracy should boost by at least 1.5%).
 # feed the images to the three networks, average the logits of the networks and 
 
 # evaluate the ensemble
-def predict_ensemble(models, X):
-    predictions = [models[0].predict(X)]
-    for model in models[1:]:
-        predictions.append(model.predict(X))
-
-    
-    predictions = np.array(predictions)
-    avg = np.average(predictions, axis=0)
-    return np.argmax(avg, axis=1)
-
-
-model1 = tf.keras.models.load_model('saved_model1')
-model2 = tf.keras.models.load_model('saved_model2')
-model3 = tf.keras.models.load_model('saved_model4')
-
-ensemble = [model1, model2, model3]
-prediction = predict_ensemble(ensemble, batch_x[:3,:,:,:])
-print(prediction)
 
 """# Transfer learning and fine-tuning
  
@@ -356,9 +333,34 @@ The key features of this architecture are
  
 How does the performance of this fine-tuned model compare to the performance of the network that you trained from scratch?
  
-
-
-
 """
 
 # TODO your transfer-learning and fine-tuning step
+import ssl
+
+ssl._create_default_https_context = ssl._create_unverified_context
+
+mobile_model = tf.keras.applications.MobileNetV2(
+    input_shape=(32, 32, 3),
+    include_top=False,
+    weights="imagenet",
+)
+
+mobile_model.summary()
+
+
+out = mobile_model.get_layer('block_5_project')
+non_trainable = tf.keras.Model(inputs=mobile_model.input, outputs=out.output)
+non_trainable.trainable = False
+x = non_trainable(inputs)
+x = tf.keras.layers.Conv2D(128, (2, 2), padding='valid', strides=(2, 2), activation='relu', kernel_initializer=he_normal())(x)
+x = tf.keras.layers.Conv2D(37, (1, 1), padding='same', activation='relu', kernel_initializer=he_normal())(x)
+x = GlobalAveragePooling2D()(x)
+outputs = Dense(37, activation=softmax)(x)
+model_tranfer_learning = tf.keras.Model(inputs=inputs, outputs=outputs)
+model_tranfer_learning.summary()
+
+
+
+
+
